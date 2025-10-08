@@ -8,10 +8,19 @@ OUTPUT_FILE = "feed.xml"
 def fetch_posts():
     items = []
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        # Launch headless browser
+        browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(CATEGORY_URL)
-        page.wait_for_selector("article")
+        
+        # Set realistic User-Agent to reduce blocking
+        page.set_extra_http_headers({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
+        
+        # Increase timeout to 60 seconds
+        page.goto(CATEGORY_URL, timeout=60000)
+        page.wait_for_selector("article")  # Wait for manga posts to load
+        
         posts = page.query_selector_all("article")
         for post in posts:
             a_tag = post.query_selector("h2 a, h3 a")
@@ -19,9 +28,12 @@ def fetch_posts():
                 continue
             title = html.escape(a_tag.inner_text().strip())
             link = a_tag.get_attribute("href")
+            
             time_tag = post.query_selector("time")
             pub_date = time_tag.get_attribute("datetime") if time_tag else datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
+            
             items.append({"title": title, "link": link, "pub_date": pub_date})
+        
         browser.close()
     return items
 
@@ -35,6 +47,7 @@ def build_rss(items):
       <guid isPermaLink="true">{it['link']}</guid>
       <pubDate>{it['pub_date']}</pubDate>
     </item>"""
+    
     rss = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
 <channel>
